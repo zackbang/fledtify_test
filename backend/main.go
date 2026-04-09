@@ -2,8 +2,10 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -73,6 +75,49 @@ func seedItems() {
 	}
 }
 
+// --- LOGIKA AUTENTIKASI (JWT) ---
+var jwtSecret = []byte("rahasia-fleetify-123") // Di dunia nyata ini harus dari .env
+
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func loginHandler(c *fiber.Ctx) error {
+	var req LoginRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input tidak valid"})
+	}
+
+	var role string
+	// Hardcoded logic sesuai instruksi Zero-Trust / Auth
+	if req.Username == "admin" && req.Password == "admin" {
+		role = "Admin"
+	} else if req.Username == "kerani" && req.Password == "kerani" {
+		role = "Kerani"
+	} else {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Username atau Password salah"})
+	}
+
+	// Buat token JWT
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"username": req.Username,
+		"role":     role,
+		"exp":      time.Now().Add(time.Hour * 24).Unix(), // Aktif 24 jam
+	})
+
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal membuat token"})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Login berhasil",
+		"token":   tokenString,
+		"role":    role,
+	})
+}
+
 func main() {
 	app := fiber.New()
 
@@ -86,4 +131,12 @@ func main() {
 
 	log.Println("🚀 Server backend berjalan di port 8080")
 	log.Fatal(app.Listen(":8080"))
+
+	// Endpoint Health Check
+	app.Get("/api/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "OK", "message": "Backend Fleetify Berjalan!"})
+	})
+
+	// Endpoint Login
+	app.Post("/api/login", loginHandler)
 }
