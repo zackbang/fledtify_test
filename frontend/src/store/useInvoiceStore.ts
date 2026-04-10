@@ -1,61 +1,46 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
-interface ClientData {
+interface Item {
+  itemId: number;
+  code: string;
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+interface InvoiceState {
+  step: number;
   senderName: string;
   senderAddress: string;
   receiverName: string;
   receiverAddress: string;
-}
-
-interface InvoiceItem {
-  itemId: string | number;
-  code: string;
-  name: string;
-  quantity: number;
-  price?: number; 
-}
-
-interface InvoiceState {
-  currentStep: number;
-  clientData: ClientData;
-  items: InvoiceItem[];
+  items: Item[];
   setStep: (step: number) => void;
-  setClientData: (data: Partial<ClientData>) => void;
-  addItem: (item: InvoiceItem) => void;
+  setClientData: (data: Partial<InvoiceState>) => void;
+  addItem: (item: Item) => void;
   removeItem: (index: number) => void;
-  resetForm: () => void;
+  clearForm: () => void;
 }
 
-const initialClientData: ClientData = {
+export const useInvoiceStore = create<InvoiceState>((set) => ({
+  step: 1,
   senderName: '',
   senderAddress: '',
   receiverName: '',
   receiverAddress: '',
-};
-
-export const useInvoiceStore = create<InvoiceState>()(
-  persist(
-    (set) => ({
-      currentStep: 1,
-      clientData: initialClientData,
-      items: [],
-      setStep: (step) => set({ currentStep: step }),
-      setClientData: (data) =>
-        set((state) => ({
-          clientData: { ...state.clientData, ...data },
-        })),
-      addItem: (item) =>
-        set((state) => ({ items: [...state.items, item] })),
-      removeItem: (index) =>
-        set((state) => ({
-          items: state.items.filter((_, i) => i !== index),
-        })),
-      resetForm: () =>
-        set({ currentStep: 1, clientData: initialClientData, items: [] }),
-    }),
-    {
-      name: 'invoice-storage', 
-    }
-  )
-);
+  items: [],
+  setStep: (step) => set({ step }),
+  setClientData: (data) => set((state) => ({ ...state, ...data })),
+  addItem: (item) => set((state) => ({ items: [...state.items, item] })),
+  removeItem: (index) => set((state) => ({
+    items: state.items.filter((_, i) => i !== index),
+  })),
+  clearForm: () => set({
+    step: 1,
+    senderName: '',
+    senderAddress: '',
+    receiverName: '',
+    receiverAddress: '',
+    items: [],
+  }),
+}));

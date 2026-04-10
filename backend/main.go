@@ -28,21 +28,34 @@ type User struct {
 }
 
 type Invoice struct {
-	ID              uint            `gorm:"primaryKey"`
-	SenderName      string          `gorm:"not null"`
-	SenderAddress   string          `gorm:"not null"`
-	ReceiverName    string          `gorm:"not null"`
-	ReceiverAddress string          `gorm:"not null"`
-	TotalAmount     float64         `gorm:"not null"`
-	Details         []InvoiceDetail `gorm:"foreignKey:InvoiceID"` 
+	ID              uint      `gorm:"primaryKey"`
+	InvoiceNo       string    `gorm:"uniqueIndex"`
+	Date            time.Time
+	SenderName      string
+	SenderAddress   string
+	ReceiverName    string
+	ReceiverAddress string
+	TotalAmount     float64
 }
 
 type InvoiceDetail struct {
-	ID        uint    `gorm:"primaryKey"`
-	InvoiceID uint    `gorm:"not null"`
-	ItemID    uint    `gorm:"not null"`
-	Quantity  int     `gorm:"not null"`
-	Subtotal  float64 `gorm:"not null"`
+	ID        uint `gorm:"primaryKey"`
+	InvoiceID uint
+	ItemID    uint
+	Quantity  int
+	Price     float64
+	Subtotal  float64
+}
+
+type InvoiceRequest struct {
+	SenderName      string `json:"sender_name"`
+	SenderAddress   string `json:"sender_address"`
+	ReceiverName    string `json:"receiver_name"`
+	ReceiverAddress string `json:"receiver_address"`
+	Items           []struct {
+		ItemID   uint `json:"item_id"`
+		Quantity int  `json:"quantity"`
+	} `json:"items"`
 }
 
 var DB *gorm.DB
@@ -152,6 +165,68 @@ func getItemsHandler(c *fiber.Ctx) error {
 	return c.JSON(items)
 }
 
+func createInvoiceHandler(c *fiber.Ctx) error {
+	var req InvoiceRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input tidak valid"})
+	}
+
+	// 1. Mulai Database Transaction (Syarat Tes)
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memulai transaksi"})
+	}
+
+	// 2. ZERO-TRUST: Hitung ulang total harga di Backend
+	var totalAmount float64
+	for _, reqItem := range req.Items {
+		var item Item
+		if err := tx.First(&item, reqItem.ItemID).Error; err != nil {
+			tx.Rollback() // Batalkan semua jika ada barang fiktif
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Barang tidak ditemukan"})
+		}
+		totalAmount += item.Price * float64(reqItem.Quantity)
+	}
+
+	// 3. Simpan Header Invoice
+	invoiceNo := "INV-" + time.Now().Format("20060102150405")
+	invoice := Invoice{
+		InvoiceNo:       invoiceNo,
+		Date:            time.Now(),
+		SenderName:      req.SenderName,
+		SenderAddress:   req.SenderAddress,
+		ReceiverName:    req.ReceiverName,
+		ReceiverAddress: req.ReceiverAddress,
+		TotalAmount:     totalAmount,
+	}
+
+	if err := tx.Create(&invoice).Error; err != nil {
+		tx.Rollback()
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menyimpan invoice"})
+	}
+
+	// 4. Simpan Detail Invoice
+	for _, reqItem := range req.Items {
+		var item Item
+		tx.First(&item, reqItem.ItemID)
+		
+		detail := InvoiceDetail{
+			InvoiceID: invoice.ID,
+			ItemID:    reqItem.ItemID,
+			Quantity:  reqItem.Quantity,
+			Price:     item.Price,
+			Subtotal:  item.Price * float64(reqItem.Quantity),
+		}
+		if err := tx.Create(&detail).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menyimpan detail"})
+		}
+	}
+
+	// 5. Commit (Simpan Permanen)
+	tx.Commit()
+	return c.JSON(fiber.Map{"message": "Invoice berhasil dibuat!", "invoice_no": invoiceNo})
+}
 func main() {
 	app := fiber.New()
 	app.Use(cors.New())
@@ -170,8 +245,9 @@ func main() {
 		return c.JSON(fiber.Map{"status": "OK", "message": "Backend Fleetify Berjalan!"})
 	})
 
-	// Endpoint Login
+	// Endpoint 
 	app.Post("/api/login", loginHandler)
 	app.Get("/api/items", getItemsHandler)
+	app.Post("/api/invoices", createInvoiceHandler)
 	log.Fatal(app.Listen(":8080"))
 }
