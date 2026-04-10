@@ -27,7 +27,7 @@ body {
 }
 
 @media print {
-  /* Atur kertas ke format A4 sesuai syarat soal  */
+  /* A4 page */
   @page {
     size: A4;
     margin: 15mm;
@@ -37,17 +37,17 @@ body {
     background-color: white !important;
   }
 
-  /* Sembunyikan elemen dashboard Next.js atau UI yang mengganggu */
+  /* hide non-print UI */
   .print\:hidden {
     display: none !important;
   }
 
-  /* Pastikan area print tampil penuh */
+  /* show print area */
   .print\:block {
     display: block !important;
   }
 
-  /* Hilangkan URL/Header default browser agar rapi */
+  /* hide browser chrome elements */
   header, footer, nav {
     display: none !important;
   }

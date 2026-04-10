@@ -35,18 +35,18 @@ export const useInvoiceStore = create<InvoiceState>()(
       setStep: (step) => set({ step }),
       setClientData: (data) => set((state) => ({ ...state, ...data })),
       
-      // LOGIKA BARU: Jangan tambah row jika barang sudah ada!
+      // merge same item
       addItem: (newItem) => set((state) => {
         const existingItemIndex = state.items.findIndex(i => i.itemId === newItem.itemId);
         
         if (existingItemIndex !== -1) {
-          // Jika sudah ada, cukup tambahkan quantity-nya
+          // increase qty
           const updatedItems = [...state.items];
           updatedItems[existingItemIndex].quantity += newItem.quantity;
           return { items: updatedItems };
         }
         
-        // Jika belum ada, masukkan sebagai baris baru
+        // add new row
         return { items: [...state.items, newItem] };
       }),
 

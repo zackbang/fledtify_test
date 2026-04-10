@@ -210,7 +210,7 @@ export default function Step2Items() {
         </table>
       </div>
 
-      {/* --- BAGIAN 4: NAVIGASI --- */}
+      {/* Navigation */}
       <div className="flex justify-between items-center pt-8 mt-6 border-t-2 border-gray-100">
         <button onClick={() => state.setStep(1)} className="text-gray-400 hover:text-black font-black uppercase text-xs tracking-widest transition-colors">
           ← Kembali

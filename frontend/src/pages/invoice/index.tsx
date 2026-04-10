@@ -14,32 +14,32 @@ export default function InvoicePage() {
   useEffect(() => {
     const token = Cookies.get("token");
     if (!token) {
-      router.push("/"); // Tendang ke login jika tidak ada token
+      router.push("/"); // back to login
       return;
     }
 
     try {
-      // Decode JWT untuk ambil Role dan Username
+      // decode token
       const payloadBase64 = token.split(".")[1];
       const decoded = JSON.parse(atob(payloadBase64));
       setUser({ username: decoded.username || "User", role: decoded.role });
     } catch (err) {
-      console.error("Auth error:", err); // Tambahkan ini agar tidak error linting
+      console.error("Auth error:", err); // keep for debug
       router.push("/");
     }
   }, [router]);
 
   const handleLogout = () => {
-    Cookies.remove("token"); // Hapus KTP (Token)
-    clearForm(); // Bersihkan memori Zustand
-    router.push("/"); // Kembali ke halaman Login
+    Cookies.remove("token"); // clear token
+    clearForm(); // reset form state
+    router.push("/"); // go to login
   };
 
   if (!user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* NAVBAR / HEADER */}
+      {/* Header */}
       <nav className="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center shadow-sm print:hidden">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-black text-blue-600 tracking-tighter">FLEETIFY APP</h1>
@@ -63,7 +63,7 @@ export default function InvoicePage() {
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
           <h2 className="text-2xl font-black text-black mb-6">Pembuatan Invoice</h2>
           
-          {/* Progress Tracker */}
+          {/* Step tracker */}
           <div className="flex gap-4 mb-8 text-sm font-bold border-b border-gray-100 pb-4 print:hidden">
             <span className={`${step === 1 ? "text-blue-600" : "text-gray-400"}`}>1. Data Klien</span>
             <span className="text-gray-300">&gt;</span>
@@ -72,7 +72,7 @@ export default function InvoicePage() {
             <span className={`${step === 3 ? "text-blue-600" : "text-gray-400"}`}>3. Review & Cetak</span>
           </div>
 
-          {/* Step Content */}
+          {/* Step content */}
           {step === 1 && <Step1Client />}
           {step === 2 && <Step2Items />}
           {step === 3 && <Step3Review />}

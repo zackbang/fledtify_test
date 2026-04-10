@@ -1,14 +1,14 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
-// Buat instance axios khusus
+// axios instance
 const api = axios.create({
   baseURL: 'http://localhost:8080/api',
 });
 
-// Interceptor: Otomatis menyisipkan Token sebelum request dikirim
+// attach token
 api.interceptors.request.use((config) => {
-  const token = Cookies.get('token'); // Ambil token hasil login dari js-cookie
+  const token = Cookies.get('token'); // from cookie
   
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

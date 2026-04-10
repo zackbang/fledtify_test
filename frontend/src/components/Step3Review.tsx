@@ -89,7 +89,7 @@ export default function Step3Review() {
   return (
     <div className="space-y-6">
       
-      {/* SUNTIKAN CSS KHUSUS UNTUK MEMAKSA FORMAT PRINT A4 & WARNA */}
+      {/* Print CSS */}
       <style>{`
         @media print {
           @page { size: A4 portrait; margin: 10mm; }
@@ -98,9 +98,7 @@ export default function Step3Review() {
         }
       `}</style>
 
-      {/* ========================================================= */}
-      {/* AREA UI LAYAR NORMAL (TIDAK IKUT TERCETAK)                */}
-      {/* ========================================================= */}
+      {/* Screen UI */}
       <div className="print:hidden space-y-6">
         <div className="bg-gray-100 p-4 rounded-lg border border-gray-300 text-black">
           <h3 className="font-bold border-b-2 border-gray-300 pb-2 mb-4 uppercase text-sm">Informasi Pengiriman</h3>
@@ -176,12 +174,10 @@ export default function Step3Review() {
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* AREA PRINT KHUSUS (TAMPILAN COMPACT A4)                     */}
-      {/* ========================================================= */}
+      {/* Print layout */}
       <div id="invoice-print" className="hidden print:block text-black bg-white font-sans text-sm w-full">
         
-        {/* Header Compact */}
+        {/* Header */}
         <div className="flex justify-between items-center border-b-2 border-gray-800 pb-4 mb-6">
           <div>
             <h1 className="text-3xl font-black tracking-tighter text-gray-900">FLEETIFY LOGISTICS</h1>
@@ -195,7 +191,7 @@ export default function Step3Review() {
           </div>
         </div>
 
-        {/* Informasi Klien Compact */}
+        {/* Client info */}
         <div className="flex gap-6 mb-6">
           <div className="w-1/2 bg-gray-50 p-4 rounded border border-gray-200">
             <p className="text-[10px] font-black uppercase text-blue-800 mb-1 tracking-widest">Pengirim (Dari):</p>
@@ -209,7 +205,7 @@ export default function Step3Review() {
           </div>
         </div>
 
-        {/* Tabel Compact */}
+        {/* Items table */}
         <table className="w-full text-left mb-6 border-collapse">
           <thead>
             <tr className="bg-gray-800 text-white text-[11px] uppercase tracking-wider">
@@ -241,7 +237,7 @@ export default function Step3Review() {
           </tfoot>
         </table>
 
-        {/* Kolom Tanda Tangan Compact */}
+        {/* Signatures */}
         <div className="flex justify-between items-end mt-12 text-center text-xs break-inside-avoid px-8">
           <div className="w-48">
             <p className="mb-12 text-gray-600 font-medium">Pihak Pengirim,</p>
@@ -257,7 +253,7 @@ export default function Step3Review() {
           </div>
         </div>
 
-        {/* Catatan Kaki Compact */}
+        {/* Footer note */}
         <div className="mt-8 text-center text-[10px] text-gray-400 border-t border-gray-200 pt-3 break-inside-avoid">
           <p>Dokumen ini sah dan dicetak secara otomatis oleh Sistem Logistik Fleetify.</p>
         </div>

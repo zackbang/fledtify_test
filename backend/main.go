@@ -4,6 +4,7 @@ import (
 	"log"
 	"strings"
 	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/golang-jwt/jwt/v5"
@@ -118,7 +119,7 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-// ... (Kode Struct dan Seeders di atas biarkan saja) ...
+// login handler
 
 func loginHandler(c *fiber.Ctx) error {
 	var req LoginRequest
@@ -135,11 +136,11 @@ func loginHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Password salah"})
 	}
 
-	// PERBAIKAN KRITIS: Tambahkan "id": user.ID agar tidak CRASH di middleware
+	// include id for middleware
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"id":       user.ID, 
+		"id":       user.ID,
 		"username": user.Username,
-		"role":     user.Role, 
+		"role":     user.Role,
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
 	})
 
@@ -180,8 +181,8 @@ func authRequired(c *fiber.Ctx) error {
 	}
 
 	claims := token.Claims.(jwt.MapClaims)
-	// SEKARANG INI AMAN, KARENA ID SUDAH ADA DI TOKEN:
-	c.Locals("user_id", uint(claims["id"].(float64))) 
+	// read user data from token
+	c.Locals("user_id", uint(claims["id"].(float64)))
 	c.Locals("user_role", claims["role"].(string))
 
 	return c.Next()
@@ -201,7 +202,7 @@ func createInvoiceHandler(c *fiber.Ctx) error {
 		for _, itemReq := range req.Items {
 			var masterItem Item
 			if err := tx.First(&masterItem, itemReq.ItemID).Error; err != nil {
-				return err 
+				return err
 			}
 			totalAmount += masterItem.Price * float64(itemReq.Quantity)
 		}
@@ -213,12 +214,12 @@ func createInvoiceHandler(c *fiber.Ctx) error {
 			SenderAddress:   req.SenderAddress,
 			ReceiverName:    req.ReceiverName,
 			ReceiverAddress: req.ReceiverAddress,
-			TotalAmount:     totalAmount, 
+			TotalAmount:     totalAmount,
 			CreatedBy:       userID,
 		}
 
 		if err := tx.Create(&invoice).Error; err != nil {
-			return err 
+			return err
 		}
 
 		for _, itemReq := range req.Items {
@@ -234,7 +235,7 @@ func createInvoiceHandler(c *fiber.Ctx) error {
 			}
 
 			if err := tx.Create(&detail).Error; err != nil {
-				return err 
+				return err
 			}
 		}
 
@@ -247,8 +248,8 @@ func createInvoiceHandler(c *fiber.Ctx) error {
 
 func main() {
 	app := fiber.New()
-	
-	// PERBAIKAN CORS: Cukup taruh 1 di atas sini agar Frontend bisa tembus
+
+	// CORS config
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "http://localhost:3000",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
@@ -262,10 +263,10 @@ func main() {
 	})
 
 	log.Println("🚀 Server backend berjalan di port 8080")
-	
+
 	app.Post("/api/login", loginHandler)
 	app.Get("/api/items", getItemsHandler)
 	app.Post("/api/invoices", authRequired, createInvoiceHandler)
-	
+
 	log.Fatal(app.Listen(":8080"))
 }
