@@ -16,20 +16,22 @@ export default function Login() {
     setError('');
 
     try {
-      // Karena lewat Docker Compose, frontend mengakses backend via localhost:8080
       const res = await axios.post('http://localhost:8080/api/login', {
         username,
         password,
       });
 
-      // Simpan token ke cookie agar bisa dipakai Axios nanti
       Cookies.set('token', res.data.token, { expires: 1 });
       Cookies.set('role', res.data.role, { expires: 1 });
-
-      // Pindah ke halaman Wizard
       router.push('/invoice');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Terjadi kesalahan saat login');
+      
+    } catch (err) {
+      // TypeScript akan senang dengan pengecekan isAxiosError ini
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.error || 'Username atau password salah');
+      } else {
+        setError('Terjadi kesalahan sistem');
+      }
     } finally {
       setLoading(false);
     }
@@ -48,7 +50,7 @@ export default function Login() {
 
         <form onSubmit={handleLogin}>
           <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2">Username</label>
+            <label className="block text-black- text-sm font-bold mb-2">Username</label>
             <input
               type="text"
               value={username}
@@ -60,7 +62,7 @@ export default function Login() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">Password</label>
+            <label className="block text-black- text-sm font-bold mb-2">Password</label>
             <input
               type="password"
               value={password}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -19,6 +20,13 @@ type Item struct {
 	Price float64 `gorm:"not null"`
 }
 
+type User struct {
+	ID       uint   `gorm:"primaryKey"`
+	Username string `gorm:"uniqueIndex;not null"`
+	Password string `gorm:"not null"` 
+	Role     string `gorm:"not null"`
+}
+
 type Invoice struct {
 	ID              uint            `gorm:"primaryKey"`
 	SenderName      string          `gorm:"not null"`
@@ -26,7 +34,7 @@ type Invoice struct {
 	ReceiverName    string          `gorm:"not null"`
 	ReceiverAddress string          `gorm:"not null"`
 	TotalAmount     float64         `gorm:"not null"`
-	Details         []InvoiceDetail `gorm:"foreignKey:InvoiceID"` // Relasi One-to-Many
+	Details         []InvoiceDetail `gorm:"foreignKey:InvoiceID"` 
 }
 
 type InvoiceDetail struct {
@@ -40,23 +48,37 @@ type InvoiceDetail struct {
 var DB *gorm.DB
 
 func initDatabase() {
-	// DSN menggunakan hostname "db" agar terhubung dengan docker-compose nantinya
+	
 	dsn := "host=db user=postgres password=postgres dbname=fleetify port=5432 sslmode=disable"
 	var err error
 
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Println("⚠️ Database belum berjalan (Wajar saat ini karena docker-compose belum dinyalakan)")
+		log.Println("⚠️ Database belum berjalan ")
 		return
 	}
 
 	log.Println("✅ Database berhasil terkoneksi!")
 
-	// Syarat Zero-Setup: Auto-Migrate tabel saat aplikasi jalan
-	DB.AutoMigrate(&Item{}, &Invoice{}, &InvoiceDetail{})
+	// auto migrate
+	DB.AutoMigrate(&User{},&Item{}, &Invoice{}, &InvoiceDetail{})
 
-	// Syarat Zero-Setup: Seeding Data otomatis jika tabel items kosong
 	seedItems()
+	seedUsers()
+}
+
+func seedUsers() {
+	var count int64
+	DB.Model(&User{}).Count(&count)
+
+	if count == 0 {
+		users := []User{
+			{Username: "admin", Password: "admin", Role: "Admin"},
+			{Username: "kerani", Password: "kerani", Role: "Kerani"},
+		}
+		DB.Create(&users)
+		log.Println("🌱 Seeding data users berhasil dilakukan!")
+	}
 }
 
 func seedItems() {
@@ -89,21 +111,22 @@ func loginHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input tidak valid"})
 	}
 
-	var role string
-	// Hardcoded logic sesuai instruksi Zero-Trust / Auth
-	if req.Username == "admin" && req.Password == "admin" {
-		role = "Admin"
-	} else if req.Username == "kerani" && req.Password == "kerani" {
-		role = "Kerani"
-	} else {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Username atau Password salah"})
+	// CARI USER DI DATABASE
+	var user User
+	if err := DB.Where("username = ?", req.Username).First(&user).Error; err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Username tidak ditemukan"})
 	}
 
-	// Buat token JWT
+	// CEK PASSWORD
+	if user.Password != req.Password {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Password salah"})
+	}
+
+	// Buat token JWT jika sukses
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": req.Username,
-		"role":     role,
-		"exp":      time.Now().Add(time.Hour * 24).Unix(), // Aktif 24 jam
+		"username": user.Username,
+		"role":     user.Role, // Ambil role asli dari database
+		"exp":      time.Now().Add(time.Hour * 24).Unix(),
 	})
 
 	tokenString, err := token.SignedString(jwtSecret)
@@ -114,13 +137,24 @@ func loginHandler(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"message": "Login berhasil",
 		"token":   tokenString,
-		"role":    role,
+		"role":    user.Role,
 	})
+}
+
+func getItemsHandler(c *fiber.Ctx) error {
+	code := c.Query("code")
+	var items []Item
+	
+	if err := DB.Where("LOWER(code) LIKE LOWER(?)", "%"+code+"%").Find(&items).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengambil data"})
+	}
+	
+	return c.JSON(items)
 }
 
 func main() {
 	app := fiber.New()
-
+	app.Use(cors.New())
 	// Inisialisasi Database
 	initDatabase()
 
@@ -130,7 +164,6 @@ func main() {
 	})
 
 	log.Println("🚀 Server backend berjalan di port 8080")
-	log.Fatal(app.Listen(":8080"))
 
 	// Endpoint Health Check
 	app.Get("/api/health", func(c *fiber.Ctx) error {
@@ -139,4 +172,6 @@ func main() {
 
 	// Endpoint Login
 	app.Post("/api/login", loginHandler)
+	app.Get("/api/items", getItemsHandler)
+	log.Fatal(app.Listen(":8080"))
 }
