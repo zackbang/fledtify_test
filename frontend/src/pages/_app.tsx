@@ -4,11 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 
 export default function App({ Component, pageProps }: AppProps) {
-  // Membuat wadah (client) untuk React Query
+  // React Query client
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
-        refetchOnWindowFocus: false, // Agar tidak boros API saat pindah tab
+        refetchOnWindowFocus: false, // skip refetch on tab switch
       },
     },
   }));

@@ -1,86 +1,54 @@
 import { useState } from 'react';
-import { useRouter } from 'next/router';
 import axios from 'axios';
 import Cookies from 'js-cookie';
+import { useRouter } from 'next/router';
 
-export default function Login() {
-  const router = useRouter();
+export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
-
     try {
-      const res = await axios.post('http://localhost:8080/api/login', {
-        username,
-        password,
-      });
-
-      Cookies.set('token', res.data.token, { expires: 1 });
-      Cookies.set('role', res.data.role, { expires: 1 });
+      const res = await axios.post('http://localhost:8080/api/login', { username, password });
+      Cookies.set('token', res.data.token);
       router.push('/invoice');
-      
     } catch (err) {
-      // TypeScript akan senang dengan pengecekan isAxiosError ini
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || 'Username atau password salah');
-      } else {
-        setError('Terjadi kesalahan sistem');
-      }
-    } finally {
-      setLoading(false);
+      console.error(err);
+      alert("Login Gagal! Pastikan Username & Password benar.");
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-96">
-        <h1 className="text-2xl font-bold mb-6 text-center text-blue-600">Fleetify</h1>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+      <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-200">
+        <h1 className="text-4xl font-black text-black mb-1 tracking-tighter italic">FLEETIFY</h1>
+        <p className="text-gray-600 mb-8 font-bold uppercase text-xs tracking-widest">Logistics System</p>
         
-        {error && (
-          <div className="bg-red-100 text-red-600 p-3 rounded mb-4 text-sm">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin}>
-          <div className="mb-4">
-            <label className="block text-black- text-sm font-bold mb-2">Username</label>
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div>
+            <label className="block text-sm font-black text-black mb-2 uppercase italic">Username</label>
             <input
               type="text"
-              value={username}
+              className="w-full p-3 border-2 border-gray-400 rounded-lg text-black font-bold focus:border-blue-600 outline-none"
+              placeholder="Admin / Kerani"
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="admin / kerani"
               required
             />
           </div>
-
-          <div className="mb-6">
-            <label className="block text-black- text-sm font-bold mb-2">Password</label>
+          <div>
+            <label className="block text-sm font-black text-black mb-2 uppercase italic">Password</label>
             <input
               type="password"
-              value={password}
+              className="w-full p-3 border-2 border-gray-400 rounded-lg text-black font-bold focus:border-blue-600 outline-none"
+              placeholder="••••••••"
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="admin / kerani"
               required
             />
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full text-white font-bold py-2 px-4 rounded focus:outline-none ${
-              loading ? 'bg-blue-300' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {loading ? 'Memproses...' : 'Login'}
+          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-800 text-white font-black py-4 rounded-lg shadow-lg uppercase tracking-tighter text-lg">
+            Masuk ke Sistem
           </button>
         </form>
       </div>

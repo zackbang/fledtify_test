@@ -25,3 +25,30 @@ body {
     text-wrap: balance;
   }
 }
+
+@media print {
+  /* Atur kertas ke format A4 sesuai syarat soal  */
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  body {
+    background-color: white !important;
+  }
+
+  /* Sembunyikan elemen dashboard Next.js atau UI yang mengganggu */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Pastikan area print tampil penuh */
+  .print\:block {
+    display: block !important;
+  }
+
+  /* Hilangkan URL/Header default browser agar rapi */
+  header, footer, nav {
+    display: none !important;
+  }
+}

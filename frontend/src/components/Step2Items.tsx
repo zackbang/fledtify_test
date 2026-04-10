@@ -1,88 +1,207 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useRef } from 'react';
 import { useInvoiceStore } from '@/store/useInvoiceStore';
-import { useDebounce } from '@/hooks/useDebounce';
-import axios from 'axios';
+import api from '@/lib/axios';
 
-interface ItemType {
-  ID: number;
-  Code: string;
-  Name: string;
-  Price: number;
+interface ItemData {
+  id?: number;
+  ID?: number;
+  code?: string;
+  Code?: string;
+  name?: string;
+  Name?: string;
+  price?: number;
+  Price?: number;
 }
 
 export default function Step2Items() {
-  const { items, addItem, removeItem, setStep } = useInvoiceStore();
-  const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search, 500);
+  const state = useInvoiceStore();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState<ItemData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [catalog, setCatalog] = useState<ItemData[]>([]);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetching data dengan React Query + Abort Signal
-  const { data: searchResults, isLoading } = useQuery({
-    queryKey: ['items', debouncedSearch],
-    queryFn: async ({ signal }) => {
-      if (!debouncedSearch) return [];
-      const res = await axios.get(`http://localhost:8080/api/items?code=${debouncedSearch}`, { signal });
-      return res.data;
-    },
-    enabled: debouncedSearch.length > 0,
-  });
+  // fetch catalog
+  useEffect(() => {
+    const fetchCatalog = async () => {
+      try {
+        const res = await api.get('/items'); 
+        const itemsData = res.data.data || res.data || [];
+        setCatalog(Array.isArray(itemsData) ? itemsData : []);
+      } catch (error) {
+        console.error("Gagal memuat katalog", error);
+      }
+    };
+    fetchCatalog();
+  }, []);
+
+  // debounce & abort search
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setResults([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await api.get(`/items?code=${searchTerm}`, { signal: abortController.signal });
+        const itemsData = res.data.data || res.data || [];
+        setResults(Array.isArray(itemsData) ? itemsData : []);
+        setShowDropdown(true);
+      } catch (error) {
+        if (error instanceof Error && error.name !== 'CanceledError') console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(timeoutId);
+      abortController.abort();
+    };
+  }, [searchTerm]);
+
+  const handleSelectItem = (item: ItemData) => {
+    state.addItem({
+      itemId: item.id || item.ID || 0,
+      code: item.code || item.Code || 'UNKNOWN',
+      name: item.name || item.Name || 'Unknown Item',
+      price: item.price || item.Price || 0,
+      quantity: 1 
+    });
+    setSearchTerm(''); 
+    setShowDropdown(false); 
+  };
 
   return (
     <div className="space-y-6">
-      {/* Kotak Pencarian */}
-      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-        <label className="block text-base font-bold text-black mb-2">Cari Barang (Ketik Kode, misal: B001)</label>
-        <input
-          type="text"
-          className="w-full p-3 border border-gray-400 rounded-md text-black font-medium focus:ring-blue-600 focus:border-blue-600 outline-none"
-          placeholder="Ketik kode barang di sini..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {isLoading && <p className="text-sm text-black font-medium mt-2 animate-pulse">Sedang mencari di database...</p>}
-        
-        {/* Hasil Pencarian */}
-        <div className="mt-2 bg-white rounded-md shadow-sm border border-gray-300 overflow-hidden">
-          {searchResults?.map((item: ItemType) => (
-            <button
-              key={item.ID}
-              onClick={() => {
-                addItem({ itemId: item.ID, code: item.Code, name: item.Name, quantity: 1, price: item.Price });
-                setSearch('');
-              }}
-              className="w-full text-left p-3 hover:bg-blue-100 border-b border-gray-200 text-base flex justify-between items-center transition-colors"
-            >
-              <span className="font-bold text-black">{item.Code} - {item.Name}</span>
-              <span className="text-black font-bold text-sm bg-blue-200 px-3 py-1 rounded">Pilih +</span>
-            </button>
-          ))}
+      
+      {/* Catalog */}
+      {catalog.length > 0 && (
+        <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg">
+          <h3 className="text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">
+            📋 Katalog Referensi (Gunakan kolom cari untuk menambah)
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {catalog.map((item, idx) => (
+              <div
+                key={idx}
+                className="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded-md text-[11px] font-bold shadow-sm flex items-center gap-2 cursor-default"
+              >
+                <span className="text-blue-600">[{item.code || item.Code}]</span>
+                <span>{item.name || item.Name}</span>
+                <span className="text-gray-400">|</span>
+                <span>Rp {(item.price || item.Price || 0).toLocaleString('id-ID')}</span>
+              </div>
+            ))}
+          </div>
         </div>
+      )}
+
+      {/* Search */}
+      <div className="relative" ref={dropdownRef}>
+        <label className="block text-sm font-black text-black mb-2 uppercase tracking-wide">
+          Cari & Tambah Barang
+        </label>
+        <div className="relative">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Ketik kode barang (Contoh: B001)..."
+            className="w-full p-4 border-2 border-gray-300 rounded-xl text-black font-bold focus:border-blue-600 outline-none transition-all pl-12"
+          />
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span>
+        </div>
+        
+        {loading && <p className="text-xs text-blue-600 font-bold mt-1 animate-pulse">Mencari di database...</p>}
+
+        {showDropdown && results.length > 0 && (
+          <div className="absolute z-20 w-full mt-2 bg-white border-2 border-gray-300 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+            {results.map((item, idx) => (
+              <div 
+                key={idx} 
+                onClick={() => handleSelectItem(item)} 
+                className="p-4 hover:bg-blue-600 hover:text-white cursor-pointer border-b border-gray-100 flex justify-between items-center transition-colors group"
+              >
+                <div>
+                  <p className="font-black text-lg group-hover:text-white text-black">{item.code || item.Code}</p>
+                  <p className="text-sm font-medium">{item.name || item.Name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-green-600 group-hover:text-white">Rp {(item.price || item.Price || 0).toLocaleString('id-ID')}</p>
+                  <p className="text-[10px] uppercase font-bold opacity-60">Klik untuk tambah</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Tabel Keranjang Belanja */}
-      <div className="border border-gray-400 rounded-lg overflow-hidden">
-        <table className="w-full text-base text-left">
-          <thead className="bg-gray-200 text-black border-b border-gray-400">
+      {/* Cart */}
+      <div className="mt-8 border-2 border-gray-300 rounded-xl overflow-hidden shadow-sm bg-white">
+        <table className="w-full text-left">
+          <thead className="bg-gray-800 text-white uppercase text-[10px] tracking-widest font-black">
             <tr>
-              <th className="p-3 font-bold">Kode</th>
-              <th className="p-3 font-bold">Nama Barang</th>
-              <th className="p-3 font-bold text-center">Qty</th>
-              <th className="p-3 font-bold text-center">Aksi</th>
+              <th className="p-4">Item</th>
+              <th className="p-4 text-center">Jumlah</th>
+              <th className="p-4 text-right">Harga Satuan</th>
+              <th className="p-4 text-center">Aksi</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-300 text-black font-medium">
-            {items.length === 0 ? (
+          <tbody className="divide-y divide-gray-200 text-black font-medium">
+            {state.items.length === 0 ? (
               <tr>
-                <td colSpan={4} className="p-4 text-center text-black font-medium">Belum ada barang yang dipilih.</td>
+                <td colSpan={4} className="p-12 text-center text-gray-400 font-bold italic">
+                  Belum ada barang yang terpilih. Silakan cari barang di atas.
+                </td>
               </tr>
             ) : (
-              items.map((item, idx) => (
-                <tr key={idx} className="hover:bg-gray-100">
-                  <td className="p-3">{item.code}</td>
-                  <td className="p-3">{item.name}</td>
-                  <td className="p-3 text-center">{item.quantity}</td>
-                  <td className="p-3 text-center">
-                    <button onClick={() => removeItem(idx)} className="text-red-600 hover:text-red-800 font-bold">Hapus</button>
+              state.items.map((item, idx) => (
+                <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                  <td className="p-4">
+                    <div className="font-black text-blue-700">{item.code}</div>
+                    <div className="text-sm text-gray-600">{item.name}</div>
+                  </td>
+                  <td className="p-4 text-center">
+                    <div className="inline-flex items-center gap-3 bg-gray-100 rounded-full px-3 py-1 border border-gray-300">
+                      <button 
+                        onClick={() => {
+                          if (item.quantity > 1) {
+                            const newItems = [...state.items];
+                            newItems[idx].quantity -= 1;
+                            state.setClientData({ items: newItems });
+                          } else {
+                            state.removeItem(idx);
+                          }
+                        }}
+                        className="text-gray-500 hover:text-red-600 font-black text-lg w-5"
+                      >−</button>
+                      <span className="font-black text-sm w-4">{item.quantity}</span>
+                      <button 
+                        onClick={() => {
+                          const newItems = [...state.items];
+                          newItems[idx].quantity += 1;
+                          state.setClientData({ items: newItems });
+                        }}
+                        className="text-gray-500 hover:text-green-600 font-black text-lg w-5"
+                      >+</button>
+                    </div>
+                  </td>
+                  <td className="p-4 text-right font-bold">
+                    Rp {(item.price || 0).toLocaleString('id-ID')}
+                  </td>
+                  <td className="p-4 text-center">
+                    <button 
+                      onClick={() => state.removeItem(idx)} 
+                      className="text-red-500 hover:bg-red-50 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all"
+                    >
+                      Hapus
+                    </button>
                   </td>
                 </tr>
               ))
@@ -91,17 +210,20 @@ export default function Step2Items() {
         </table>
       </div>
 
-      {/* Tombol Navigasi */}
-      <div className="flex justify-between pt-4 border-t border-gray-300 mt-6">
-        <button onClick={() => setStep(1)} className="text-black hover:underline font-bold">← Kembali (Edit Klien)</button>
+      {/* --- BAGIAN 4: NAVIGASI --- */}
+      <div className="flex justify-between items-center pt-8 mt-6 border-t-2 border-gray-100">
+        <button onClick={() => state.setStep(1)} className="text-gray-400 hover:text-black font-black uppercase text-xs tracking-widest transition-colors">
+          ← Kembali
+        </button>
         <button 
-          onClick={() => setStep(3)} 
-          disabled={items.length === 0} 
-          className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed font-bold"
+          onClick={() => state.setStep(3)} 
+          disabled={state.items.length === 0}
+          className="bg-blue-600 text-white px-10 py-4 rounded-xl hover:bg-blue-800 disabled:bg-gray-200 disabled:text-gray-400 font-black uppercase tracking-widest shadow-xl transform active:scale-95 transition-all"
         >
-          Selanjutnya (Review) →
+          Selanjutnya →
         </button>
       </div>
+
     </div>
   );
 }

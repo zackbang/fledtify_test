@@ -6,7 +6,7 @@ export default function Step1Client() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-6">
-        {/* Pengirim */}
+        {/* Sender */}
         <div className="space-y-4">
           <h3 className="font-bold text-black border-b border-gray-300 pb-2">Data Pengirim</h3>
           <div>
@@ -29,7 +29,7 @@ export default function Step1Client() {
           </div>
         </div>
 
-        {/* Penerima */}
+        {/* Recipient */}
         <div className="space-y-4">
           <h3 className="font-bold text-black border-b border-gray-300 pb-2">Data Penerima</h3>
           <div>

@@ -2,8 +2,8 @@ package main
 
 import (
 	"log"
+	"strings"
 	"time"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/golang-jwt/jwt/v5"
@@ -11,8 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// --- SKEMA DATABASE (GORM) ---
-
+// Database schemas
 type Item struct {
 	ID    uint    `gorm:"primaryKey"`
 	Code  string  `gorm:"uniqueIndex;not null"`
@@ -23,19 +22,20 @@ type Item struct {
 type User struct {
 	ID       uint   `gorm:"primaryKey"`
 	Username string `gorm:"uniqueIndex;not null"`
-	Password string `gorm:"not null"` 
+	Password string `gorm:"not null"`
 	Role     string `gorm:"not null"`
 }
 
 type Invoice struct {
-	ID              uint      `gorm:"primaryKey"`
-	InvoiceNo       string    `gorm:"uniqueIndex"`
+	ID              uint   `gorm:"primaryKey"`
+	InvoiceNo       string `gorm:"uniqueIndex"`
 	Date            time.Time
 	SenderName      string
 	SenderAddress   string
 	ReceiverName    string
 	ReceiverAddress string
 	TotalAmount     float64
+	CreatedBy       uint
 }
 
 type InvoiceDetail struct {
@@ -61,7 +61,7 @@ type InvoiceRequest struct {
 var DB *gorm.DB
 
 func initDatabase() {
-	
+
 	dsn := "host=db user=postgres password=postgres dbname=fleetify port=5432 sslmode=disable"
 	var err error
 
@@ -73,8 +73,8 @@ func initDatabase() {
 
 	log.Println("✅ Database berhasil terkoneksi!")
 
-	// auto migrate
-	DB.AutoMigrate(&User{},&Item{}, &Invoice{}, &InvoiceDetail{})
+	// migrate tables
+	DB.AutoMigrate(&User{}, &Item{}, &Invoice{}, &InvoiceDetail{})
 
 	seedItems()
 	seedUsers()
@@ -110,13 +110,15 @@ func seedItems() {
 	}
 }
 
-// --- LOGIKA AUTENTIKASI (JWT) ---
-var jwtSecret = []byte("rahasia-fleetify-123") // Di dunia nyata ini harus dari .env
+// JWT authentication
+var jwtSecret = []byte("rahasia-fleetify-123") // TODO: move to .env
 
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
+
+// ... (Kode Struct dan Seeders di atas biarkan saja) ...
 
 func loginHandler(c *fiber.Ctx) error {
 	var req LoginRequest
@@ -124,21 +126,20 @@ func loginHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input tidak valid"})
 	}
 
-	// CARI USER DI DATABASE
 	var user User
 	if err := DB.Where("username = ?", req.Username).First(&user).Error; err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Username tidak ditemukan"})
 	}
 
-	// CEK PASSWORD
 	if user.Password != req.Password {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Password salah"})
 	}
 
-	// Buat token JWT jika sukses
+	// PERBAIKAN KRITIS: Tambahkan "id": user.ID agar tidak CRASH di middleware
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"id":       user.ID, 
 		"username": user.Username,
-		"role":     user.Role, // Ambil role asli dari database
+		"role":     user.Role, 
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
 	})
 
@@ -157,97 +158,114 @@ func loginHandler(c *fiber.Ctx) error {
 func getItemsHandler(c *fiber.Ctx) error {
 	code := c.Query("code")
 	var items []Item
-	
 	if err := DB.Where("LOWER(code) LIKE LOWER(?)", "%"+code+"%").Find(&items).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengambil data"})
 	}
-	
 	return c.JSON(items)
 }
 
+func authRequired(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized: No token provided"})
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+
+	if err != nil || !token.Valid {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized: Invalid token"})
+	}
+
+	claims := token.Claims.(jwt.MapClaims)
+	// SEKARANG INI AMAN, KARENA ID SUDAH ADA DI TOKEN:
+	c.Locals("user_id", uint(claims["id"].(float64))) 
+	c.Locals("user_role", claims["role"].(string))
+
+	return c.Next()
+}
+
 func createInvoiceHandler(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(uint)
+
 	var req InvoiceRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Input tidak valid"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	// 1. Mulai Database Transaction (Syarat Tes)
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memulai transaksi"})
-	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var totalAmount float64
 
-	// 2. ZERO-TRUST: Hitung ulang total harga di Backend
-	var totalAmount float64
-	for _, reqItem := range req.Items {
-		var item Item
-		if err := tx.First(&item, reqItem.ItemID).Error; err != nil {
-			tx.Rollback() // Batalkan semua jika ada barang fiktif
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Barang tidak ditemukan"})
+		for _, itemReq := range req.Items {
+			var masterItem Item
+			if err := tx.First(&masterItem, itemReq.ItemID).Error; err != nil {
+				return err 
+			}
+			totalAmount += masterItem.Price * float64(itemReq.Quantity)
 		}
-		totalAmount += item.Price * float64(reqItem.Quantity)
-	}
 
-	// 3. Simpan Header Invoice
-	invoiceNo := "INV-" + time.Now().Format("20060102150405")
-	invoice := Invoice{
-		InvoiceNo:       invoiceNo,
-		Date:            time.Now(),
-		SenderName:      req.SenderName,
-		SenderAddress:   req.SenderAddress,
-		ReceiverName:    req.ReceiverName,
-		ReceiverAddress: req.ReceiverAddress,
-		TotalAmount:     totalAmount,
-	}
-
-	if err := tx.Create(&invoice).Error; err != nil {
-		tx.Rollback()
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menyimpan invoice"})
-	}
-
-	// 4. Simpan Detail Invoice
-	for _, reqItem := range req.Items {
-		var item Item
-		tx.First(&item, reqItem.ItemID)
-		
-		detail := InvoiceDetail{
-			InvoiceID: invoice.ID,
-			ItemID:    reqItem.ItemID,
-			Quantity:  reqItem.Quantity,
-			Price:     item.Price,
-			Subtotal:  item.Price * float64(reqItem.Quantity),
+		invoice := Invoice{
+			InvoiceNo:       "INV-" + time.Now().Format("20060102150405"),
+			Date:            time.Now(),
+			SenderName:      req.SenderName,
+			SenderAddress:   req.SenderAddress,
+			ReceiverName:    req.ReceiverName,
+			ReceiverAddress: req.ReceiverAddress,
+			TotalAmount:     totalAmount, 
+			CreatedBy:       userID,
 		}
-		if err := tx.Create(&detail).Error; err != nil {
-			tx.Rollback()
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menyimpan detail"})
-		}
-	}
 
-	// 5. Commit (Simpan Permanen)
-	tx.Commit()
-	return c.JSON(fiber.Map{"message": "Invoice berhasil dibuat!", "invoice_no": invoiceNo})
+		if err := tx.Create(&invoice).Error; err != nil {
+			return err 
+		}
+
+		for _, itemReq := range req.Items {
+			var masterItem Item
+			tx.First(&masterItem, itemReq.ItemID)
+
+			detail := InvoiceDetail{
+				InvoiceID: invoice.ID,
+				ItemID:    itemReq.ItemID,
+				Quantity:  itemReq.Quantity,
+				Price:     masterItem.Price,
+				Subtotal:  masterItem.Price * float64(itemReq.Quantity),
+			}
+
+			if err := tx.Create(&detail).Error; err != nil {
+				return err 
+			}
+		}
+
+		return c.JSON(fiber.Map{
+			"message":    "Invoice successfully created",
+			"invoice_no": invoice.InvoiceNo,
+		})
+	})
 }
+
 func main() {
 	app := fiber.New()
-	app.Use(cors.New())
-	// Inisialisasi Database
+	
+	// PERBAIKAN CORS: Cukup taruh 1 di atas sini agar Frontend bisa tembus
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "http://localhost:3000",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+	}))
+
 	initDatabase()
 
-	// Endpoint Health Check
 	app.Get("/api/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "OK", "message": "Backend Fleetify Berjalan!"})
 	})
 
 	log.Println("🚀 Server backend berjalan di port 8080")
-
-	// Endpoint Health Check
-	app.Get("/api/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "OK", "message": "Backend Fleetify Berjalan!"})
-	})
-
-	// Endpoint 
+	
 	app.Post("/api/login", loginHandler)
 	app.Get("/api/items", getItemsHandler)
-	app.Post("/api/invoices", createInvoiceHandler)
+	app.Post("/api/invoices", authRequired, createInvoiceHandler)
+	
 	log.Fatal(app.Listen(":8080"))
 }
